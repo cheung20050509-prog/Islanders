@@ -11,9 +11,23 @@ from world import World
 from ui import UIRenderer
 from config import *
 
-
 class Game:
-    def __init__(self, api_key: str = ""):
+    def __init__(self, api_key: str = "", screen=None):
+        # 初始化pygame和屏幕
+        pygame.init()
+        pygame.font.init()
+
+        if screen is None:
+            self.screen = pygame.display.set_mode(
+                (SCREEN_WIDTH, SCREEN_HEIGHT),
+                pygame.HWSURFACE | pygame.DOUBLEBUF | pygame.RESIZABLE
+            )
+            pygame.display.set_caption("荒岛模拟")
+        else:
+            self.screen = screen
+
+        self.clock = pygame.time.Clock()
+
         self.bailian = BailianClient(api_key)
         self.dialog_system = GlobalDialogSystem()
         self.chronicle = Chronicle()
@@ -129,8 +143,8 @@ class Game:
         # 更新世界时间
         self.world.update_time()
 
-    def draw(self, screen):
-        screen.fill((0, 0, 0))
+    def draw(self):
+        self.screen.fill((0, 0, 0))
 
         # 渲染地形
         visible_area = pygame.Rect(
@@ -139,7 +153,7 @@ class Game:
             SCREEN_WIDTH,
             SCREEN_HEIGHT - HUD_HEIGHT
         )
-        screen.blit(self.world.terrain_surface, visible_area, visible_area)
+        self.screen.blit(self.world.terrain_surface, visible_area, visible_area)
 
         # 渲染NPC
         for npc in self.world.npcs:
@@ -147,29 +161,29 @@ class Game:
             screen_y = int(npc.y * TILE_SIZE + self.camera_offset_y)
 
             if (0 <= screen_x < SCREEN_WIDTH and 0 <= screen_y < SCREEN_HEIGHT - HUD_HEIGHT):
-                npc.draw(screen, self.camera_offset_x, self.camera_offset_y)
+                npc.draw(self.screen, self.camera_offset_x, self.camera_offset_y)
 
                 if npc == self.selected_npc:
-                    pygame.draw.rect(screen, (255, 255, 0),
+                    pygame.draw.rect(self.screen, (255, 255, 0),
                                      (screen_x - 5, screen_y - 5, TILE_SIZE + 10, TILE_SIZE + 10), 2)
 
         # 绘制HUD
-        self.ui_renderer.draw_hud(screen, self.world, self.camera_x, self.camera_y, self.selected_npc)
+        self.ui_renderer.draw_hud(self.screen, self.world, self.camera_x, self.camera_y, self.selected_npc)
 
         if self.show_help:
-            self.ui_renderer.draw_help(screen)
+            self.ui_renderer.draw_help(self.screen)
 
         if self.show_npc_conversations:
-            self.ui_renderer.draw_npc_conversations(screen, self.dialog_system)
+            self.ui_renderer.draw_npc_conversations(self.screen, self.dialog_system)
 
         if self.show_npc_details:
-            self.ui_renderer.draw_npc_details(screen, self.world.npcs, self.selected_npc)
+            self.ui_renderer.draw_npc_details(self.screen, self.world.npcs, self.selected_npc)
 
         if self.show_chronicle:
-            self.ui_renderer.draw_chronicle(screen, self.chronicle)
+            self.ui_renderer.draw_chronicle(self.screen, self.chronicle)
 
         if self.show_communications:
-            self.ui_renderer.draw_communication_events(screen, self.dialog_system)
+            self.ui_renderer.draw_communication_events(self.screen, self.dialog_system)
 
         pygame.display.flip()
 
@@ -177,6 +191,6 @@ class Game:
         while self.running:
             self.handle_events()
             self.update()
-            self.draw(screen)
-            clock.tick(FPS)
+            self.draw()
+            self.clock.tick(FPS)
         pygame.quit()
