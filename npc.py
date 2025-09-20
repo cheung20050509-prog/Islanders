@@ -279,7 +279,7 @@ class SmartNPC:
 
         prompt = f"""你是{self.name}，第一次见到{speaker_name}。
 {speaker_name}对你说: "{message}"
-请友好地回应。"""
+"""
 
         # 模拟思考延迟
         time.sleep(self.model_response_delay)
@@ -304,8 +304,7 @@ class SmartNPC:
         recent_memories = self.memory.retrieve("对话", 3)
         prompt = f"""你是{self.name}，正在与{target_npc.name}在荒岛上对话。
 之前的交流: {recent_memories}
-请说一句开始对话的话，说话请像人类，尽量自然。
-在最后加上"结束对话的可能性：X%"（X是0-100的数字）"""
+请说一句开始对话的话，说话请像人类，尽量自然。"""
 
         # 模拟思考延迟
         time.sleep(self.model_response_delay)
@@ -327,8 +326,7 @@ class SmartNPC:
         prompt = f"""你是{self.name}，正在与{speaker_name}对话。
 {speaker_name}对你说: "{message}"
 之前的交流: {recent_memories}
-请自然回应。
-在最后加上"结束对话的可能性：X%"（X是0-100的数字）"""
+请自然回应。"""
 
         # 模拟思考延迟
         time.sleep(self.model_response_delay)
@@ -347,8 +345,7 @@ class SmartNPC:
         recent_memories = self.memory.retrieve("对话", 5)
         prompt = f"""你是{self.name}，正在与{self.conversation_partner.name}继续对话。
 之前的交流: {recent_memories}
-请继续对话，保持自然。
-在最后加上"结束对话的可能性：X%"（X是0-100的数字）"""
+请继续对话，保持自然。"""
 
         # 模拟思考延迟
         time.sleep(self.model_response_delay)
@@ -361,22 +358,6 @@ class SmartNPC:
         """检查是否应该结束对话"""
         if not self.conversation_partner:
             return True
-
-        conversations = self.dialog_system.get_recent_conversations()
-        if conversations:
-            end_probabilities = []
-            for _, _, message, _ in conversations[-3:]:
-                match = re.search(r"结束对话的可能性[：:]\s*(\d+)%", message)
-                if match:
-                    end_probabilities.append(int(match.group(1)))
-
-            if end_probabilities:
-                avg_probability = sum(end_probabilities) / len(end_probabilities)
-                if avg_probability > 70:
-                    self.set_move_away_target()
-                    return random.randint(1, 100) <= avg_probability
-                else:
-                    return random.randint(1, 100) <= avg_probability
 
         return random.randint(1, 100) <= 10
 
