@@ -10,7 +10,7 @@ from memory_system import Chronicle
 from world import World
 from ui import UIRenderer
 from config import *
-
+import asyncio
 class Game:
     def __init__(self, api_key: str = "", screen=None):
         # 初始化pygame和屏幕
@@ -93,16 +93,10 @@ class Game:
                             self.selected_npc = npc
                             break
 
-    def update(self):
-        current_time = time.time()
-
-        if current_time - self.last_render_time < 1.0 / self.frame_rate_limit:
-            return
-
-        self.last_render_time = current_time
+    async def update(self):
 
         # 处理相机移动
-        camera_dx, camera_dy = 0, 0
+        '''camera_dx, camera_dy = 0, 0
         if pygame.K_w in self.keys or pygame.K_UP in self.keys:
             camera_dy -= CAMERA_SPEED
         if pygame.K_s in self.keys or pygame.K_DOWN in self.keys:
@@ -123,10 +117,12 @@ class Game:
             self.camera_y = max(0, min(WORLD_SIZE * TILE_SIZE, self.camera_y))
 
         self.camera_offset_x = SCREEN_WIDTH // 2 - int(self.camera_x)
-        self.camera_offset_y = (SCREEN_HEIGHT - HUD_HEIGHT) // 2 - int(self.camera_y)
+        self.camera_offset_y = (SCREEN_HEIGHT - HUD_HEIGHT) // 2 - int(self.camera_y)'''
 
         # 更新NPC状态
+        await asyncio.sleep(0.1)
         for npc in self.world.npcs:
+
             if not npc.is_dead:
                 npc.find_nearby_npcs(self.world.npcs)
                 npc.find_nearby_resources(self.world)
@@ -141,7 +137,7 @@ class Game:
             npc.update(self.world)
 
         # 更新世界时间
-        self.world.update_time()
+
 
     def draw(self):
         self.screen.fill((0, 0, 0))
@@ -187,10 +183,57 @@ class Game:
 
         pygame.display.flip()
 
-    def run(self):
+
+    def drawlater(self):
+        self.screen.fill((0, 0, 0))
+
+        '''# 渲染地形
+        visible_area = pygame.Rect(
+            self.camera_offset_x,
+            self.camera_offset_y,
+            SCREEN_WIDTH,
+            SCREEN_HEIGHT - HUD_HEIGHT
+        )
+        self.screen.blit(self.world.terrain_surface, visible_area, visible_area)
+'''
+        # 渲染NPC
+        for npc in self.world.npcs:
+            screen_x = int(npc.x * TILE_SIZE + self.camera_offset_x)
+            screen_y = int(npc.y * TILE_SIZE + self.camera_offset_y)
+
+            if (0 <= screen_x < SCREEN_WIDTH and 0 <= screen_y < SCREEN_HEIGHT - HUD_HEIGHT):
+                npc.draw(self.screen, self.camera_offset_x, self.camera_offset_y)
+
+                if npc == self.selected_npc:
+                    pygame.draw.rect(self.screen, (255, 255, 0),
+                                     (screen_x - 5, screen_y - 5, TILE_SIZE + 10, TILE_SIZE + 10), 2)
+
+        # 绘制HUD
+        self.ui_renderer.draw_hud(self.screen, self.world, self.camera_x, self.camera_y, self.selected_npc)
+
+
+
+        pygame.display.flip()
+
+    async def pack1(self):
+        for i in range(10):
+            await asyncio.sleep(0.1)
+            self.world.update_time()
+        print("时间更新")
+
+    async def pack2(self):
+        self.handle_events()
+        task3=asyncio.create_task(self.update())
+        await task3
+        print("处理事件")
+        await asyncio.sleep(0.1)
+
+
+    async def run(self):
+        self.draw()
         while self.running:
-            self.handle_events()
-            self.update()
+            task1 = asyncio.create_task(self.pack1())
+            task2 = asyncio.create_task(self.pack2())
+            await asyncio.gather(task1, task2)
             self.draw()
-            self.clock.tick(FPS)
         pygame.quit()
