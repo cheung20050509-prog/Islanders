@@ -19,7 +19,7 @@ class World:
         self._generate_resources()
         self.load_resources()
 
-        # 加载世界状态（天气和天数）
+        # 加载世界状态（仅保留天数和时间）
         self.load_world_state()
 
         # 地形渲染缓存
@@ -37,62 +37,88 @@ class World:
             SmartNPC("伊拉拉", 5.5, 8.5, bailian, dialog_system, chronicle),
             SmartNPC("贾克斯", 6.5, 6.5, bailian, dialog_system, chronicle),
         ]
+        
+        # 新增：记录所有NPC的行为，用于观察
+        self.action_log = []
 
     def _generate_terrain(self) -> List[List[str]]:
-        tiles = [["grass" for _ in range(WORLD_SIZE)] for _ in range(WORLD_SIZE)]
+        # 初始化所有格子为水
+        tiles = [["water" for _ in range(WORLD_SIZE)] for _ in range(WORLD_SIZE)]
+
+        center = WORLD_SIZE // 2  # 计算中心点坐标
+        radius = 15  # 岛屿半径
 
         for x in range(WORLD_SIZE):
             for y in range(WORLD_SIZE):
+                # 计算与中心的距离
                 distance_from_center = math.sqrt(
-                    (x - WORLD_SIZE // 2) ** 2 + (y - WORLD_SIZE // 2) ** 2
+                    (x - center) ** 2 + (y - center) ** 2
                 )
-                water_chance = min(0.6, distance_from_center / (WORLD_SIZE // 2))
 
-                if random.random() < water_chance * 0.3:
-                    tiles[x][y] = "water"
-                elif random.random() < 0.1 and tiles[x][y] != "water":
-                    tiles[x][y] = "sand"
+                # 在圆形范围内生成陆地
+                if distance_from_center <= radius:
+                    # 中心区域更可能是草地
+                    grass_chance = 1.0 - (distance_from_center / radius) * 0.7
 
-        # 平滑地形
+                    # 距离中心越远，沙地可能性越高
+                    sand_chance = min(0.6, (distance_from_center / radius) * 0.8)
+
+                    # 随机决定地形类型
+                    if random.random() < sand_chance:
+                        tiles[x][y] = "sand"
+                    else:
+                        tiles[x][y] = "grass"
+
+        # 平滑地形，使过渡更自然
         for _ in range(2):
             new_tiles = [row.copy() for row in tiles]
             for x in range(1, WORLD_SIZE - 1):
                 for y in range(1, WORLD_SIZE - 1):
+                    # 只处理圆形范围内的格子
+                    distance_from_center = math.sqrt(
+                        (x - center) ** 2 + (y - center) ** 2
+                    )
+                    if distance_from_center > radius + 1:
+                        continue
+
+                    # 检查四个方向的邻居
                     neighbors = [
                         tiles[x - 1][y], tiles[x + 1][y],
                         tiles[x][y - 1], tiles[x][y + 1]
                     ]
                     water_count = neighbors.count("water")
                     sand_count = neighbors.count("sand")
+                    grass_count = neighbors.count("grass")
 
+                    # 根据邻居情况调整地形
                     if water_count >= 3:
                         new_tiles[x][y] = "water"
-                    elif sand_count >= 2 and tiles[x][y] != "water":
+                    elif sand_count >= 3:
                         new_tiles[x][y] = "sand"
+                    elif grass_count >= 3:
+                        new_tiles[x][y] = "grass"
+                    # 边界附近更可能变成沙地
+                    elif distance_from_center > radius - 2 and random.random() < 0.7:
+                        new_tiles[x][y] = "sand"
+
             tiles = new_tiles
 
         return tiles
 
     def _generate_resources(self):
-        """生成岛上的资源"""
+        """生成岛上的资源（删除了残骸）"""
         # 在非水域生成资源
         for x in range(WORLD_SIZE):
             for y in range(WORLD_SIZE):
                 if self.tiles[x][y] != "water":
-                    # 随机生成资源
+                    # 随机生成资源（删除了树木）
                     rand = random.random()
-                    if rand < 0.15:  # 15% 概率生成树木
-                        self.resources[x][y] = "tree"
-                        self.resource_amounts[x][y] = random.randint(5, 10)
-                    elif rand < 0.20:  # 5% 概率生成淡水
+                    if rand < 0.20:  # 20% 概率生成淡水
                         self.resources[x][y] = "freshwater"
                         self.resource_amounts[x][y] = random.randint(10, 20)
                     elif rand < 0.25:  # 5% 概率生成果树
                         self.resources[x][y] = "fruit"
                         self.resource_amounts[x][y] = random.randint(3, 7)
-                    elif rand < 0.28 and self.tiles[x][y] == "sand":  # 3% 概率在沙滩生成残骸
-                        self.resources[x][y] = "wreckage"
-                        self.resource_amounts[x][y] = random.randint(2, 5)
 
         # 在水域生成鱼群
         for x in range(WORLD_SIZE):
@@ -100,6 +126,8 @@ class World:
                 if self.tiles[x][y] == "water" and random.random() < 0.2:
                     self.resources[x][y] = "fish"
                     self.resource_amounts[x][y] = random.randint(3, 8)
+
+
 
     def save_resources(self):
         """保存资源状态到JSON"""
@@ -166,7 +194,7 @@ class World:
             for y in range(WORLD_SIZE):
                 if self.resources[x][y] and self.resource_amounts[x][y] == 0:
                     # 已耗尽的资源有概率刷新
-                    if random.random() < 0.3:
+                    if random.random() < 0.1:
                         if self.resources[x][y] == "tree":
                             self.resource_amounts[x][y] = random.randint(3, 7)
                         elif self.resources[x][y] == "freshwater":
@@ -184,15 +212,14 @@ class World:
         hour = int(self.time)
         minute = int((self.time % 1) * 60)
         time_str = f"{hour:02d}:{minute:02d}"
-        return f"{self.season}第{self.day}天 {time_str}，天气{self.weather}"
+        # 删除天气和季节信息
+        return f"第{self.day}天 {time_str}"
 
     def save_world_state(self):
         """保存世界状态（天气和天数）到JSON"""
         world_data = {
             "day": self.day,
-            "time": self.time,
-            "season": self.season,
-            "weather": self.weather
+            "time": self.time
         }
         with open("data/world_state.json", "w", encoding="utf-8") as f:
             json.dump(world_data, f, ensure_ascii=False, indent=2)
@@ -204,11 +231,11 @@ class World:
                 world_data = json.load(f)
                 self.day = world_data.get("day", 1)
                 self.time = world_data.get("time", 12.0)
-                self.season = world_data.get("season", "春天")
-                self.weather = world_data.get("weather", "晴朗")
         except (FileNotFoundError, json.JSONDecodeError):
             # 如果文件不存在或解析错误，使用默认值
             self.day = 1
             self.time = 12.0
-            self.season = "春天"
-            self.weather = "晴朗"
+
+            
+
+    
