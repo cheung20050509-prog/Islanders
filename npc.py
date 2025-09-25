@@ -35,11 +35,14 @@ class SmartNPC:
         self.health = 100
         self.energy = 100
         self.inventory = {
-            "wood": 0,
             "水": 0,
             "鱼": 0,
-            "果实": 0,
-            "杂物": 0
+            "果实": 0
+        }
+        self.inventory_limits = {
+            "水": 5,    # 每天消耗约12能量，每份水恢复10 → 上限5
+            "鱼": 3,    # 每份鱼恢复20 → 上限3
+            "果实": 4   # 每份果实恢复15 → 上限4
         }
 
         self.is_in_conversation = False
@@ -77,7 +80,6 @@ class SmartNPC:
             "name": self.name,
             "x": self.x,
             "y": self.y,
-            "health": self.health,
             "energy": self.energy,
             "inventory": self.inventory,
             "is_dead": self.is_dead
@@ -92,7 +94,6 @@ class SmartNPC:
                 state = json.load(f)
                 self.x = state["x"]
                 self.y = state["y"]
-                self.health = state["health"]
                 self.energy = state["energy"]
                 self.inventory = state["inventory"]
                 self.is_dead = state["is_dead"]
@@ -121,60 +122,67 @@ class SmartNPC:
                         "amount": world.resource_amounts[x][y]
                     })
 
-    def can_hear(self, speaker, volume: str) -> bool:
-        """判断是否能听到说话"""
-        if self.is_dead:
-            return False
-        distance = math.sqrt((self.x - speaker.x) ** 2 + (self.y - speaker.y) ** 2)
-        max_range = VOLUME_LOUD_RANGE if volume == "loud" else VOLUME_NORMAL_RANGE
-        return distance <= max_range
 
-    def talk(self, message: str, volume: str = "normal"):
-        """说话，附近能听到的NPC会接收到消息"""
+    def talk(self, message: str):
+        """说话，所有人都能听到（删除音量）"""
         if self.is_dead:
             return
 
         self.energy = max(0, self.energy - 2)
-        self.memory.add(f"我说: {message} (音量: {volume})", MemoryType.COMMUNICATION, 7)
+        self.memory.add(f"我说: {message}", MemoryType.COMMUNICATION, 7)
 
         # 记录到编年史
         self.chronicle.add_event(
             self.name,
             "说话",
             (self.x, self.y),
-            f"说: {message} (音量: {volume})"
+            f"说: {message}"
         )
+        
+        # 记录到世界行为日志
+        self.chronicle.world.action_log.append({
+            "actor": self.name,
+            "action": "talk",
+            "target": None,
+            "message": message,
+            "time": time.time()
+        })
 
-        # 通知附近能听到的NPC
-        for npc in self.nearby_npcs:
-            if npc.can_hear(self, volume):
-                npc.hear_message(self, message, volume)
+        # 所有NPC都能听到
+        for npc in self.chronicle.world.npcs:
+            if npc != self and not npc.is_dead:
+                npc.hear_message(self, message)
 
-    def hear_message(self, speaker, message: str, volume: str):
-        """听到消息"""
-        distance = math.sqrt((self.x - speaker.x) ** 2 + (self.y - speaker.y) ** 2)
+    def hear_message(self, speaker, message: str):
+        """听到消息（删除距离判断）"""
         self.memory.add(
-            f"听到{speaker.name}说: {message} (距离: {distance:.1f}, 音量: {volume})",
+            f"听到{speaker.name}说: {message}",
             MemoryType.COMMUNICATION,
-            6 if volume == "loud" else 5
+            6
         )
 
         # 添加到全局对话系统
         self.dialog_system.add_conversation(speaker.name, self.name, message)
-
-        # 记录为communication事件
-        self.dialog_system.add_communication_event(speaker.name, self.name, message, volume)
+        self.dialog_system.add_communication_event(speaker.name, self.name, message)
 
     def gather_resource(self, resource: Dict, world):
-        """采集资源"""
+        """采集资源（删除wood相关）"""
         if self.is_dead:
             return
 
         resource_type = resource["type"]
         resource_info = RESOURCE_TYPES[resource_type]
         gather_amount = min(resource_info["amount"], world.resource_amounts[resource["x"]][resource["y"]])
+        
+        # 检查库存上限
+        target_item = resource_info["gather"]
+        if self.inventory[target_item] + gather_amount > self.inventory_limits[target_item]:
+            gather_amount = self.inventory_limits[target_item] - self.inventory[target_item]
+            if gather_amount <= 0:
+                self.memory.add(f"{target_item}库存已满，无法继续采集", MemoryType.ACTION, 5)
+                return
 
-        self.inventory[resource_info["gather"]] += gather_amount
+        self.inventory[target_item] += gather_amount
         world.resource_amounts[resource["x"]][resource["y"]] -= gather_amount
 
         self.energy = max(0, self.energy - 5)
@@ -184,17 +192,23 @@ class SmartNPC:
             7
         )
 
-        # 记录到编年史
+        # 记录到编年史和行为日志
         self.chronicle.add_event(
             self.name,
             "采集",
             (self.x, self.y),
             f"采集了{resource_info['name']}，获得{resource_info['gather']}{gather_amount}个"
         )
+        world.action_log.append({
+            "actor": self.name,
+            "action": "gather",
+            "target": resource_type,
+            "amount": gather_amount,
+            "time": time.time()
+        })
 
         # 保存世界状态
         world.save_resources()
-
     def eat(self):
         """吃东西恢复生命值和能量"""
         if self.is_dead:
@@ -225,15 +239,64 @@ class SmartNPC:
             self.memory.add("喝了1份水，恢复了能量", MemoryType.ACTION, 5)
             self.chronicle.add_event(self.name, "饮水", (self.x, self.y), "喝了1份水")
 
-    def rest(self):
-        """休息恢复能量和少量生命值"""
-        if self.is_dead:
-            return
+    def give(self, target_npc, resource_info):
+            """给予资源给目标NPC"""
+            if self.is_dead or target_npc.is_dead:
+                return
+                
+            # 检查是否在同一坐标
+            if not (abs(self.x - target_npc.x) < 1 and abs(self.y - target_npc.y) < 1):
+                self.memory.add(f"想给{target_npc.name}东西，但不在同一位置", MemoryType.ACTION, 5)
+                return
+                
+            # 解析资源信息（格式："水:1" 或 "鱼:2"）
+            try:
+                resource_type, amount = resource_info.split(":")
+                amount = int(amount)
+                if resource_type not in ["水", "鱼", "果实"]:
+                    raise ValueError("无效资源类型")
+            except:
+                self.memory.add(f"给予格式错误，正确格式应为'资源:数量'", MemoryType.ACTION, 5)
+                return
+                
+            # 检查自身是否有足够资源
+            if self.inventory.get(resource_type, 0) < amount:
+                self.memory.add(f"想给{target_npc.name}{resource_type}{amount}个，但数量不足", MemoryType.ACTION, 5)
+                return
+                
+            # 检查目标是否有足够空间
+            remaining_space = target_npc.inventory_limits[resource_type] - target_npc.inventory[resource_type]
+            if remaining_space < amount:
+                amount = remaining_space
+                if amount <= 0:
+                    self.memory.add(f"{target_npc.name}的{resource_type}库存已满，无法给予", MemoryType.ACTION, 5)
+                    return
+                    
+            # 转移资源
+            self.inventory[resource_type] -= amount
+            target_npc.inventory[resource_type] += amount
+            
+            # 记录记忆
+            self.memory.add(f"给了{target_npc.name}{resource_type}{amount}个", MemoryType.ACTION, 7)
+            target_npc.memory.add(f"收到{self.name}给的{resource_type}{amount}个", MemoryType.ACTION, 7)
+            
+            # 记录到编年史和行为日志
+            self.chronicle.add_event(
+                self.name, "给予", (self.x, self.y), f"给了{target_npc.name}{resource_type}{amount}个"
+            )
+            self.chronicle.world.action_log.append({
+                "actor": self.name,
+                "action": "give",
+                "target": target_npc.name,
+                "resource": resource_type,
+                "amount": amount,
+                "time": time.time()
+            })
+            
+            # 保存状态
+            self.save_state()
+            target_npc.save_state()
 
-        self.energy = min(100, self.energy + 10)
-        self.health = min(100, self.health + 2)
-        self.memory.add("休息了一会儿，恢复了一些能量和生命值", MemoryType.ACTION, 4)
-        self.chronicle.add_event(self.name, "休息", (self.x, self.y), "休息恢复体力")
 
     def interact_with_nearby_npcs(self):
         """与附近的NPC交互"""
@@ -394,9 +457,9 @@ class SmartNPC:
         if self.is_dead or self.is_in_conversation:
             return {"action": "idle", "target": None, "details": "无行动", "volume": None}
 
-        # 增加决策间隔
+        # 每144帧检查一次决策（原来是72帧）
         current_time = time.time()
-        if current_time - self.last_action_time > random.uniform(MODEL_CALL_COOLDOWN, MODEL_CALL_COOLDOWN + 5):
+        if current_time - self.last_action_time > (144.0 / FPS):
             self.last_action_time = current_time
             self.last_model_call_time = current_time
 
@@ -520,6 +583,7 @@ class SmartNPC:
         self.inventory[resource] -= 1
         self.energy = min(100, self.energy + energy_gain)
         self.last_action_time = time.time()
+        print(f"{self.name}吃了1个{resource}，能量恢复到{self.energy}")
 
         # 记录记忆和编年史
         self.memory.add(
@@ -666,13 +730,6 @@ class SmartNPC:
             name_y = screen_y - 20
             surf.blit(self.name_surface, (name_x, name_y))
 
-            # 生命条和能量条
-            # 生命值
-            hp_percent = self.health / 100
-            pygame.draw.rect(surf, (100, 0, 0),
-                             (screen_x, screen_y + TILE_SIZE + 2, TILE_SIZE, 4))
-            pygame.draw.rect(surf, (255, 0, 0),
-                             (screen_x, screen_y + TILE_SIZE + 2, int(TILE_SIZE * hp_percent), 4))
 
             # 能量值
             energy_percent = self.energy / 100
