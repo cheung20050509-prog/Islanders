@@ -12,6 +12,13 @@ from typing import List, Dict, Optional
 from memory_system import MemoryStream, MemoryType
 from config import *
 
+
+INVENTORY_LIMITS = {
+        "水": 7,
+        "鱼": 4,
+        "果实": 5
+    }
+
 class SmartNPC:
     def __init__(self, name: str, x: float, y: float, bailian,
                  dialog_system, chronicle):
@@ -32,17 +39,11 @@ class SmartNPC:
         self.nearby_resources = []
 
         # 生命体征
-        self.health = 100
         self.energy = 100
         self.inventory = {
             "水": 0,
             "鱼": 0,
             "果实": 0
-        }
-        self.inventory_limits = {
-            "水": 5,    # 每天消耗约12能量，每份水恢复10 → 上限5
-            "鱼": 3,    # 每份鱼恢复20 → 上限3
-            "果实": 4   # 每份果实恢复15 → 上限4
         }
 
         self.is_in_conversation = False
@@ -122,67 +123,77 @@ class SmartNPC:
                         "amount": world.resource_amounts[x][y]
                     })
 
-
-    def talk(self, message: str):
-        """说话，所有人都能听到（删除音量）"""
+    def can_hear(self, speaker, volume: str) -> bool:
+        """判断是否能听到说话"""
         if self.is_dead:
-            return
+            return False
+        distance = math.sqrt((self.x - speaker.x) ** 2 + (self.y - speaker.y) ** 2)
+        max_range = VOLUME_LOUD_RANGE if volume == "loud" else VOLUME_NORMAL_RANGE
+        return distance <= max_range
 
-        self.energy = max(0, self.energy - 2)
-        self.memory.add(f"我说: {message}", MemoryType.COMMUNICATION, 7)
+    """说话，所有NPC都能听到（无视距离）"""
+def talk(self, message: str, all_npcs: List['SmartNPC']):  # 新增all_npcs参数，删除volume参数
+    """说话，所有NPC都能听到（无视距离）"""
+    if self.is_dead:
+        return
 
-        # 记录到编年史
-        self.chronicle.add_event(
-            self.name,
-            "说话",
-            (self.x, self.y),
-            f"说: {message}"
-        )
-        
-        # 记录到世界行为日志
-        self.chronicle.world.action_log.append({
-            "actor": self.name,
-            "action": "talk",
-            "target": None,
-            "message": message,
-            "time": time.time()
-        })
+    self.energy = max(0, self.energy - 2)
+    self.memory.add(f"我说: {message}", MemoryType.COMMUNICATION, 7)  # 移除音量记录
 
-        # 所有NPC都能听到
-        for npc in self.chronicle.world.npcs:
-            if npc != self and not npc.is_dead:
-                npc.hear_message(self, message)
+    # 记录到编年史（移除音量）
+    self.chronicle.add_event(
+        self.name,
+        "说话",
+        (self.x, self.y),
+        f"说: {message}"
+    )
 
-    def hear_message(self, speaker, message: str):
-        """听到消息（删除距离判断）"""
-        self.memory.add(
-            f"听到{speaker.name}说: {message}",
-            MemoryType.COMMUNICATION,
-            6
-        )
+    # 通知所有NPC（不再检查距离和音量）
+    for npc in all_npcs:
+        if npc != self and not npc.is_dead:  # 排除自己和已死亡NPC
+            npc.hear_message(self, message)  # 移除volume参数
 
-        # 添加到全局对话系统
-        self.dialog_system.add_conversation(speaker.name, self.name, message)
-        self.dialog_system.add_communication_event(speaker.name, self.name, message)
+    """听到消息（无视距离）"""
+def hear_message(self, speaker, message: str):  # 删除volume参数
+    """听到消息（无视距离）"""
+    # 不再计算距离（或保留距离记录但不影响收听）
+    self.memory.add(
+        f"听到{speaker.name}说: {message}",  # 移除距离和音量记录
+        MemoryType.COMMUNICATION,
+        5  # 统一重要度
+    )
+
+    # 添加到全局对话系统（保留说话对象）
+    self.dialog_system.add_conversation(speaker.name, self.name, message)
+
+    # 记录为communication事件（移除音量）
+    self.dialog_system.add_communication_event(speaker.name, self.name, message, "normal")  # 音量字段留空或默认值
 
     def gather_resource(self, resource: Dict, world):
-        """采集资源（删除wood相关）"""
+        """采集资源"""
         if self.is_dead:
             return
 
         resource_type = resource["type"]
         resource_info = RESOURCE_TYPES[resource_type]
         gather_amount = min(resource_info["amount"], world.resource_amounts[resource["x"]][resource["y"]])
-        
-        # 检查库存上限
-        target_item = resource_info["gather"]
-        if self.inventory[target_item] + gather_amount > self.inventory_limits[target_item]:
-            gather_amount = self.inventory_limits[target_item] - self.inventory[target_item]
-            if gather_amount <= 0:
-                self.memory.add(f"{target_item}库存已满，无法继续采集", MemoryType.ACTION, 5)
-                return
 
-        self.inventory[target_item] += gather_amount
+            # 新增：计算实际可添加的数量（不超过上限）
+        resource_key = resource_info["gather"]  # 对应库存中的键（如"水"、"鱼"）
+        current_amount = self.inventory[resource_key]
+        max_possible = self.INVENTORY_LIMITS[resource_key] - current_amount
+        actual_gather = min(gather_amount, max_possible)
+        
+        if actual_gather <= 0:
+            # 库存已满，记录记忆
+            self.memory.add(
+                f"想采集{resource_info['name']}，但{resource_key}库存已满（上限{self.INVENTORY_LIMITS[resource_key]}）",
+                MemoryType.ACTION,
+                7
+            )
+            return
+
+        self.inventory[resource_info["gather"]] += gather_amount
         world.resource_amounts[resource["x"]][resource["y"]] -= gather_amount
 
         self.energy = max(0, self.energy - 5)
@@ -192,23 +203,17 @@ class SmartNPC:
             7
         )
 
-        # 记录到编年史和行为日志
+        # 记录到编年史
         self.chronicle.add_event(
             self.name,
             "采集",
             (self.x, self.y),
             f"采集了{resource_info['name']}，获得{resource_info['gather']}{gather_amount}个"
         )
-        world.action_log.append({
-            "actor": self.name,
-            "action": "gather",
-            "target": resource_type,
-            "amount": gather_amount,
-            "time": time.time()
-        })
 
         # 保存世界状态
         world.save_resources()
+
     def eat(self):
         """吃东西恢复生命值和能量"""
         if self.is_dead:
@@ -217,15 +222,13 @@ class SmartNPC:
         # 寻找可食用的物品
         if self.inventory["果实"] > 0:
             self.inventory["果实"] -= 1
-            self.health = min(100, self.health + 10)
             self.energy = min(100, self.energy + 20)
-            self.memory.add("吃了1个果实，恢复了生命值和能量", MemoryType.ACTION, 6)
+            self.memory.add("吃了1个果实，恢复了能量", MemoryType.ACTION, 6)
             self.chronicle.add_event(self.name, "进食", (self.x, self.y), "吃了1个果实")
         elif self.inventory["鱼"] > 0:
             self.inventory["鱼"] -= 1
-            self.health = min(100, self.health + 15)
             self.energy = min(100, self.energy + 25)
-            self.memory.add("吃了1条鱼，恢复了生命值和能量", MemoryType.ACTION, 6)
+            self.memory.add("吃了1条鱼，恢复了和能量", MemoryType.ACTION, 6)
             self.chronicle.add_event(self.name, "进食", (self.x, self.y), "吃了1条鱼")
 
     def drink(self):
@@ -239,65 +242,55 @@ class SmartNPC:
             self.memory.add("喝了1份水，恢复了能量", MemoryType.ACTION, 5)
             self.chronicle.add_event(self.name, "饮水", (self.x, self.y), "喝了1份水")
 
-    def give(self, target_npc, resource_info):
-            """给予资源给目标NPC"""
-            if self.is_dead or target_npc.is_dead:
-                return
-                
-            # 检查是否在同一坐标
-            if not (abs(self.x - target_npc.x) < 1 and abs(self.y - target_npc.y) < 1):
-                self.memory.add(f"想给{target_npc.name}东西，但不在同一位置", MemoryType.ACTION, 5)
-                return
-                
-            # 解析资源信息（格式："水:1" 或 "鱼:2"）
-            try:
-                resource_type, amount = resource_info.split(":")
-                amount = int(amount)
-                if resource_type not in ["水", "鱼", "果实"]:
-                    raise ValueError("无效资源类型")
-            except:
-                self.memory.add(f"给予格式错误，正确格式应为'资源:数量'", MemoryType.ACTION, 5)
-                return
-                
-            # 检查自身是否有足够资源
-            if self.inventory.get(resource_type, 0) < amount:
-                self.memory.add(f"想给{target_npc.name}{resource_type}{amount}个，但数量不足", MemoryType.ACTION, 5)
-                return
-                
-            # 检查目标是否有足够空间
-            remaining_space = target_npc.inventory_limits[resource_type] - target_npc.inventory[resource_type]
-            if remaining_space < amount:
-                amount = remaining_space
-                if amount <= 0:
-                    self.memory.add(f"{target_npc.name}的{resource_type}库存已满，无法给予", MemoryType.ACTION, 5)
-                    return
-                    
-            # 转移资源
-            self.inventory[resource_type] -= amount
-            target_npc.inventory[resource_type] += amount
+    def give(self, target_npc: 'SmartNPC', resource_type: str, amount: int):
+        """赠送资源给目标NPC"""
+        if self.is_dead or target_npc.is_dead:
+            return
+
+        distance = math.sqrt((self.x - target_npc.x) **2 + (self.y - target_npc.y)** 2)
+        if distance > 0.5:
+            self.memory.add(f"尝试给{target_npc.name}赠送{resource_type}，但不在同一位置", MemoryType.ACTION, 5)
+            return
+
+        # 新增：计算实际可赠送的数量（不超过双方限制）
+        if resource_type not in self.INVENTORY_LIMITS:
+            self.memory.add(f"无法赠送未知资源：{resource_type}", MemoryType.ACTION, 5)
+            return
             
-            # 记录记忆
-            self.memory.add(f"给了{target_npc.name}{resource_type}{amount}个", MemoryType.ACTION, 7)
-            target_npc.memory.add(f"收到{self.name}给的{resource_type}{amount}个", MemoryType.ACTION, 7)
-            
-            # 记录到编年史和行为日志
-            self.chronicle.add_event(
-                self.name, "给予", (self.x, self.y), f"给了{target_npc.name}{resource_type}{amount}个"
+        self_current = self.inventory.get(resource_type, 0)
+        target_current = target_npc.inventory.get(resource_type, 0)
+        target_max = target_npc.INVENTORY_LIMITS[resource_type]
+        
+        max_possible = min(amount, self_current, target_max - target_current)
+        if max_possible <= 0:
+            self.memory.add(
+                f"尝试给{target_npc.name}赠送{amount}个{resource_type}，但库存不足或对方已达上限",
+                MemoryType.ACTION, 5
             )
-            self.chronicle.world.action_log.append({
-                "actor": self.name,
-                "action": "give",
-                "target": target_npc.name,
-                "resource": resource_type,
-                "amount": amount,
-                "time": time.time()
-            })
-            
-            # 保存状态
-            self.save_state()
-            target_npc.save_state()
+            return
 
+        # 更新双方库存（使用实际赠送量）
+        self.inventory[resource_type] -= max_possible
+        target_npc.inventory[resource_type] = target_current + max_possible
 
+        # 双方记录记忆（使用实际赠送量）
+        self.memory.add(
+            f"给{target_npc.name}赠送了{max_possible}个{resource_type}，剩余{self.inventory[resource_type]}个",
+            MemoryType.COMMUNICATION, 7
+        )
+        target_npc.memory.add(
+            f"收到{self.name}赠送的{max_possible}个{resource_type}，现在有{target_npc.inventory[resource_type]}个",
+            MemoryType.COMMUNICATION, 7
+        )
+
+        # 记录到编年史（使用实际赠送量）
+        self.chronicle.add_event(
+            self.name, "赠送", (self.x, self.y),
+            f"给{target_npc.name}赠送了{max_possible}个{resource_type}"
+        )
+
+        self.save_state()
+        target_npc.save_state()
     def interact_with_nearby_npcs(self):
         """与附近的NPC交互"""
         if self.is_dead or self.is_in_conversation:
@@ -325,13 +318,13 @@ class SmartNPC:
                     self.start_conversation_with(target_npc)
                     self.last_npc_interaction_time = current_time
 
-    def greet_npc(self, target_npc):
+    def greet_npc(self, target_npc, all_npcs: List['SmartNPC']):  # 新增all_npcs参数
         """初次见面问候"""
         greeting = f"{target_npc.name}你好"
-        self.talk(greeting)
-        target_npc.respond_to_greeting(self.name, greeting)
+        self.talk(greeting, all_npcs)  # 传递all_npcs，移除volume
+        target_npc.respond_to_greeting(self.name, greeting, all_npcs)  # 同步修改respond_to_greeting调用
 
-    def respond_to_greeting(self, speaker_name: str, message: str):
+    def respond_to_greeting(self, speaker_name: str, message: str, all_npcs: List['SmartNPC']):
         """回应问候"""
         # 检查模型调用冷却
         current_time = time.time()
@@ -348,12 +341,12 @@ class SmartNPC:
         time.sleep(self.model_response_delay)
 
         response = self.bailian.generate_response(self.name, prompt)
-        self.talk(response)
+        self.talk(response, all_npcs)
 
         # 添加到全局对话系统
         self.dialog_system.add_conversation(self.name, speaker_name, response)
 
-    def start_conversation_with(self, target_npc):
+    def start_conversation_with(self, target_npc,all_npcs: List['SmartNPC']):
         """开始与特定NPC的对话"""
         self.is_in_conversation = True
         self.conversation_partner = target_npc
@@ -373,10 +366,10 @@ class SmartNPC:
         time.sleep(self.model_response_delay)
 
         response = self.bailian.generate_response(self.name, prompt)
-        self.talk(response)
-        target_npc.receive_message(self.name, response)
+        self.talk(response,all_npcs)
+        target_npc.receive_message(self.name, response,all_npcs)
 
-    def receive_message(self, speaker_name: str, message: str):
+    def receive_message(self, speaker_name: str, message: str,all_npcs: List['SmartNPC']):
         """接收并回应消息"""
         # 检查模型调用冷却
         current_time = time.time()
@@ -395,12 +388,12 @@ class SmartNPC:
         time.sleep(self.model_response_delay)
 
         response = self.bailian.generate_response(self.name, prompt)
-        self.talk(response)
+        self.talk(response,all_npcs)
 
         # 添加到全局对话系统
-        self.dialog_system.add_conversation(self.name, speaker_name, response)
+        self.dialog_system.add_conversation(self.name, speaker_name, response,all_npcs)
 
-    def continue_conversation(self):
+    def continue_conversation(self,all_npcs: List['SmartNPC']):
         """继续对话（只有发起者调用）"""
         if not self.conversation_partner or not self.is_conversation_initiator:
             return
@@ -414,8 +407,8 @@ class SmartNPC:
         time.sleep(self.model_response_delay)
 
         response = self.bailian.generate_response(self.name, prompt)
-        self.talk(response)
-        self.conversation_partner.receive_message(self.name, response)
+        self.talk(response,all_npcs)
+        self.conversation_partner.receive_message(self.name, response,all_npcs)
 
     def should_end_conversation(self):
         """检查是否应该结束对话"""
@@ -454,8 +447,7 @@ class SmartNPC:
 
     def decide_action(self, world_state: str) -> Dict:
         """决定下一步行动"""
-        if self.is_dead or self.is_in_conversation:
-            return {"action": "idle", "target": None, "details": "无行动", "volume": None}
+        
 
         # 每144帧检查一次决策（原来是72帧）
         current_time = time.time()
@@ -468,7 +460,7 @@ class SmartNPC:
             nearby_npcs_info = f"附近有{len(self.nearby_npcs)}个NPC: {[npc.name for npc in self.nearby_npcs]}" if self.nearby_npcs else "附近没有其他NPC"
             nearby_resources_info = f"附近有{len(self.nearby_resources)}种资源: {[res['type'] for res in self.nearby_resources]}" if self.nearby_resources else "附近没有明显资源"
             inventory_info = f"背包: {', '.join([f'{k}:{v}' for k, v in self.inventory.items() if v > 0])}"
-            vitals_info = f"生命值: {self.health}, 能量值: {self.energy}"
+            vitals_info = f"能量值: {self.energy}"
 
             prompt = f"""你是{self.name}，在荒岛上生存。
 当前状态: {world_state}
@@ -479,9 +471,10 @@ class SmartNPC:
 最近的记忆: {memories}
 
 请决定你接下来的行动。考虑你的生命值和能量，周围的资源和其他NPC。
-如果能量低，考虑休息、吃东西或喝水。
+如果能量低，考虑吃东西或喝水。
 如果看到资源，可以考虑采集。
 如果看到其他NPC，很大可能交流。Communication时，不要太多考虑，直接和他人说话。
+可以向附近NPC赠送资源（格式：give+目标NPC+资源类型,数量），赠送不消耗能量但需要在同一位置。
 """
 
             # 模拟思考延迟
@@ -504,7 +497,6 @@ class SmartNPC:
         action_type = action.get("action", "idle")
         target = action.get("target")
         details = action.get("details", "")
-        volume = action.get("volume", "normal")
 
         self.memory.add(f"周围环境: {world.get_state_str()}", MemoryType.OBSERVATION, 3)
 
@@ -524,7 +516,7 @@ class SmartNPC:
         elif action_type == "talk" and isinstance(target, str) and details:
             for npc in self.nearby_npcs:
                 if npc.name == target:
-                    self.talk(details, volume)
+                    self.talk(details, world.all_npcs)  # 传递所有NPC列表
 
         # 处理 gather 行为，target 为字符串（资源类型）
         elif action_type == "gather" and isinstance(target, str):
@@ -540,8 +532,20 @@ class SmartNPC:
         elif action_type == "drink":
             self.drink()
 
-        elif action_type == "rest":
-            self.rest()
+        elif action_type == "give" and isinstance(target, str) and details:
+            # 解析详情中的资源类型和数量（格式示例："鱼,3"）
+            try:
+                resource_type, amount = details.split(',')
+                amount = int(amount)
+                # 查找目标NPC
+                for npc in self.nearby_npcs:
+                    if npc.name == target:
+                        self.give(npc, resource_type, amount)
+                        break
+            except (ValueError, TypeError):
+                self.memory.add(f"赠送格式错误，正确格式应为'资源类型,数量'", MemoryType.ACTION, 4)
+
+        
 
         else:
             # 其它情况或类型错误，记录日志但不报错
@@ -676,21 +680,13 @@ class SmartNPC:
         # 自然消耗
         self.energy = max(0, self.energy - 0.01)
 
-        # 能量过低影响生命值
-        if self.energy < 20:
-            self.health = max(0, self.health - 0.02)
-
-        # 生命值为0则死亡
-        if self.health <= 0:
+        # 能量归零则死亡
+        if self.energy <= 0:
             self.is_dead = True
-            self.memory.add("因生命值耗尽而死亡", MemoryType.STATE, 10)
-            self.chronicle.add_event(self.name, "死亡", (self.x, self.y), "因生命值耗尽而死亡")
+            self.memory.add("因能量耗尽而死亡", MemoryType.STATE, 10)
+            self.chronicle.add_event(self.name, "死亡", (self.x, self.y), "因能量耗尽而死亡")
 
-        # 根据能量调整速度
-        if self.energy < 30:
-            self.speed = 0.5
-        else:
-            self.speed = random.uniform(1.5, 3.0)
+        self.speed = random.uniform(1.5, 3.0)
 
         # 保存状态
         self.save_state()
@@ -729,7 +725,6 @@ class SmartNPC:
             name_x = screen_x + TILE_SIZE // 2 - self.name_surface.get_width() // 2
             name_y = screen_y - 20
             surf.blit(self.name_surface, (name_x, name_y))
-
 
             # 能量值
             energy_percent = self.energy / 100
