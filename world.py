@@ -157,17 +157,13 @@ class World:
 
                 # 绘制资源
                 if self.resources[x][y] and self.resource_amounts[x][y] > 0:
-                    res_type = self.resources[x][y]
-                    if res_type == "tree":
-                        pygame.draw.rect(tile_surf, COLORS["tree"], (10, 10, 12, 12))
-                    elif res_type == "freshwater":
+                    res_type = self.resources[x][y]                    
+                    if res_type == "freshwater":
                         pygame.draw.circle(tile_surf, COLORS["freshwater"], (16, 16), 8)
                     elif res_type == "fish":
                         pygame.draw.polygon(tile_surf, COLORS["fish"], [(10, 16), (22, 16), (16, 10), (16, 22)])
                     elif res_type == "fruit":
                         pygame.draw.circle(tile_surf, COLORS["fruit"], (16, 16), 5)
-                    elif res_type == "wreckage":
-                        pygame.draw.rect(tile_surf, COLORS["wreckage"], (8, 8, 16, 16))
 
                 self.terrain_surface.blit(tile_surf, (x * TILE_SIZE, y * TILE_SIZE))
 
@@ -176,14 +172,6 @@ class World:
 
         if self.time < 0.02:
             self.day += 1
-            if self.day % 15 == 0:
-                seasons = ["春天", "夏天", "秋天", "冬天"]
-                self.season = seasons[(seasons.index(self.season) + 1) % 4]
-
-            weather_types = ["晴朗", "多云", "下雨", "刮风"]
-            self.weather = random.choices(
-                weather_types, [0.5, 0.3, 0.15, 0.05]
-            )[0]
 
             # 每天有概率刷新一些资源
             self.refresh_resources()
@@ -237,5 +225,3 @@ class World:
             self.time = 12.0
 
             
-
-    
