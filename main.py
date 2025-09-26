@@ -5,7 +5,7 @@ AI驱动的NPC互动模拟游戏
 import os
 import sys
 from game import Game
-
+import asyncio
 # 确保数据目录存在
 os.makedirs("data", exist_ok=True)
 
@@ -17,7 +17,7 @@ def main():
     try:
         # 创建并运行游戏
         game = Game(API_KEY)
-        game.run()
+        asyncio.run(game.run())
     except KeyboardInterrupt:
         print("\n游戏被用户中断")
         sys.exit(0)

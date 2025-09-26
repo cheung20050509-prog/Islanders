@@ -13,11 +13,6 @@ from memory_system import MemoryStream, MemoryType
 from config import *
 
 
-INVENTORY_LIMITS = {
-        "水": 7,
-        "鱼": 4,
-        "果实": 5
-    }
 
 class SmartNPC:
     def __init__(self, name: str, x: float, y: float, bailian,
@@ -45,6 +40,13 @@ class SmartNPC:
             "鱼": 0,
             "果实": 0
         }
+
+        
+        self.INVENTORY_LIMITS = {
+                "水": 7,
+                "鱼": 4,
+                "果实": 5
+            }
 
         self.is_in_conversation = False
         self.conversation_partner = None
@@ -131,43 +133,41 @@ class SmartNPC:
         max_range = VOLUME_LOUD_RANGE if volume == "loud" else VOLUME_NORMAL_RANGE
         return distance <= max_range
 
-    """说话，所有NPC都能听到（无视距离）"""
-def talk(self, message: str, all_npcs: List['SmartNPC']):  # 新增all_npcs参数，删除volume参数
-    """说话，所有NPC都能听到（无视距离）"""
-    if self.is_dead:
-        return
+    def talk(self, message: str, volume: str = "normal"):
+        """说话，附近能听到的NPC会接收到消息"""
+        if self.is_dead:
+            return
 
-    self.energy = max(0, self.energy - 2)
-    self.memory.add(f"我说: {message}", MemoryType.COMMUNICATION, 7)  # 移除音量记录
+        self.energy = max(0, self.energy - 2)
+        self.memory.add(f"我说: {message} (音量: {volume})", MemoryType.COMMUNICATION, 7)
 
-    # 记录到编年史（移除音量）
-    self.chronicle.add_event(
-        self.name,
-        "说话",
-        (self.x, self.y),
-        f"说: {message}"
-    )
+        # 记录到编年史
+        self.chronicle.add_event(
+            self.name,
+            "说话",
+            (self.x, self.y),
+            f"说: {message} (音量: {volume})"
+        )
 
-    # 通知所有NPC（不再检查距离和音量）
-    for npc in all_npcs:
-        if npc != self and not npc.is_dead:  # 排除自己和已死亡NPC
-            npc.hear_message(self, message)  # 移除volume参数
+        # 通知附近能听到的NPC
+        for npc in self.nearby_npcs:
+            if npc.can_hear(self, volume):
+                npc.hear_message(self, message, volume)
 
-    """听到消息（无视距离）"""
-def hear_message(self, speaker, message: str):  # 删除volume参数
-    """听到消息（无视距离）"""
-    # 不再计算距离（或保留距离记录但不影响收听）
-    self.memory.add(
-        f"听到{speaker.name}说: {message}",  # 移除距离和音量记录
-        MemoryType.COMMUNICATION,
-        5  # 统一重要度
-    )
+    def hear_message(self, speaker, message: str, volume: str):
+        """听到消息"""
+        distance = math.sqrt((self.x - speaker.x) ** 2 + (self.y - speaker.y) ** 2)
+        self.memory.add(
+            f"听到{speaker.name}说: {message} (距离: {distance:.1f}, 音量: {volume})",
+            MemoryType.COMMUNICATION,
+            6 if volume == "loud" else 5
+        )
 
-    # 添加到全局对话系统（保留说话对象）
-    self.dialog_system.add_conversation(speaker.name, self.name, message)
+        # 添加到全局对话系统
+        self.dialog_system.add_conversation(speaker.name, self.name, message)
 
-    # 记录为communication事件（移除音量）
-    self.dialog_system.add_communication_event(speaker.name, self.name, message, "normal")  # 音量字段留空或默认值
+        # 记录为communication事件
+        self.dialog_system.add_communication_event(speaker.name, self.name, message, volume)
 
     def gather_resource(self, resource: Dict, world):
         """采集资源"""
@@ -318,13 +318,13 @@ def hear_message(self, speaker, message: str):  # 删除volume参数
                     self.start_conversation_with(target_npc)
                     self.last_npc_interaction_time = current_time
 
-    def greet_npc(self, target_npc, all_npcs: List['SmartNPC']):  # 新增all_npcs参数
+    def greet_npc(self, target_npc):
         """初次见面问候"""
         greeting = f"{target_npc.name}你好"
-        self.talk(greeting, all_npcs)  # 传递all_npcs，移除volume
-        target_npc.respond_to_greeting(self.name, greeting, all_npcs)  # 同步修改respond_to_greeting调用
+        self.talk(greeting)
+        target_npc.respond_to_greeting(self.name, greeting)
 
-    def respond_to_greeting(self, speaker_name: str, message: str, all_npcs: List['SmartNPC']):
+    def respond_to_greeting(self, speaker_name: str, message: str):
         """回应问候"""
         # 检查模型调用冷却
         current_time = time.time()
@@ -341,12 +341,12 @@ def hear_message(self, speaker, message: str):  # 删除volume参数
         time.sleep(self.model_response_delay)
 
         response = self.bailian.generate_response(self.name, prompt)
-        self.talk(response, all_npcs)
+        self.talk(response)
 
         # 添加到全局对话系统
         self.dialog_system.add_conversation(self.name, speaker_name, response)
 
-    def start_conversation_with(self, target_npc,all_npcs: List['SmartNPC']):
+    def start_conversation_with(self, target_npc):
         """开始与特定NPC的对话"""
         self.is_in_conversation = True
         self.conversation_partner = target_npc
@@ -366,10 +366,10 @@ def hear_message(self, speaker, message: str):  # 删除volume参数
         time.sleep(self.model_response_delay)
 
         response = self.bailian.generate_response(self.name, prompt)
-        self.talk(response,all_npcs)
-        target_npc.receive_message(self.name, response,all_npcs)
+        self.talk(response)
+        target_npc.receive_message(self.name, response)
 
-    def receive_message(self, speaker_name: str, message: str,all_npcs: List['SmartNPC']):
+    def receive_message(self, speaker_name: str, message: str):
         """接收并回应消息"""
         # 检查模型调用冷却
         current_time = time.time()
@@ -388,12 +388,12 @@ def hear_message(self, speaker, message: str):  # 删除volume参数
         time.sleep(self.model_response_delay)
 
         response = self.bailian.generate_response(self.name, prompt)
-        self.talk(response,all_npcs)
+        self.talk(response)
 
         # 添加到全局对话系统
-        self.dialog_system.add_conversation(self.name, speaker_name, response,all_npcs)
+        self.dialog_system.add_conversation(self.name, speaker_name, response)
 
-    def continue_conversation(self,all_npcs: List['SmartNPC']):
+    def continue_conversation(self):
         """继续对话（只有发起者调用）"""
         if not self.conversation_partner or not self.is_conversation_initiator:
             return
@@ -407,8 +407,8 @@ def hear_message(self, speaker, message: str):  # 删除volume参数
         time.sleep(self.model_response_delay)
 
         response = self.bailian.generate_response(self.name, prompt)
-        self.talk(response,all_npcs)
-        self.conversation_partner.receive_message(self.name, response,all_npcs)
+        self.talk(response)
+        self.conversation_partner.receive_message(self.name, response)
 
     def should_end_conversation(self):
         """检查是否应该结束对话"""
@@ -449,7 +449,7 @@ def hear_message(self, speaker, message: str):  # 删除volume参数
         """决定下一步行动"""
         
 
-        # 每144帧检查一次决策（原来是72帧）
+
         current_time = time.time()
         if current_time - self.last_action_time > (144.0 / FPS):
             self.last_action_time = current_time
@@ -497,6 +497,7 @@ def hear_message(self, speaker, message: str):  # 删除volume参数
         action_type = action.get("action", "idle")
         target = action.get("target")
         details = action.get("details", "")
+        volume = action.get("volume", "normal")
 
         self.memory.add(f"周围环境: {world.get_state_str()}", MemoryType.OBSERVATION, 3)
 
@@ -516,7 +517,7 @@ def hear_message(self, speaker, message: str):  # 删除volume参数
         elif action_type == "talk" and isinstance(target, str) and details:
             for npc in self.nearby_npcs:
                 if npc.name == target:
-                    self.talk(details, world.all_npcs)  # 传递所有NPC列表
+                    self.talk(details, volume)
 
         # 处理 gather 行为，target 为字符串（资源类型）
         elif action_type == "gather" and isinstance(target, str):

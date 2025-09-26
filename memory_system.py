@@ -30,8 +30,9 @@ class MemoryStream:
             "type": memory_type.value,
             "importance": importance
         }
-        self.memories.append(memory)
-        self.save_to_json()
+        if memory["type"] != "observation":
+            self.memories.append(memory)
+            self.save_to_json()
 
     def retrieve(self, query: str, limit: int = 5) -> List[str]:
         """根据时间、重要性和相关性检索记忆"""
@@ -109,8 +110,10 @@ class Chronicle:
             "location": (round(location[0], 1), round(location[1], 1)),
             "details": details
         }
-        self.events.append(event)
-        self.save_to_json()
+        if event["action"]!="observation":
+            print(f"{agent_name} {action} {location} {details}")
+            self.events.append(event)
+            self.save_to_json()
 
     def save_to_json(self):
         """保存编年史到JSON文件"""

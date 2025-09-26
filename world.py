@@ -113,17 +113,17 @@ class World:
                 if self.tiles[x][y] != "water":
                     # 随机生成资源（删除了树木）
                     rand = random.random()
-                    if rand < 0.20:  # 20% 概率生成淡水
+                    if rand < 0.05:  # 20% 概率生成淡水
                         self.resources[x][y] = "freshwater"
                         self.resource_amounts[x][y] = random.randint(10, 20)
-                    elif rand < 0.25:  # 5% 概率生成果树
+                    elif rand < 0.07:  # 5% 概率生成果树
                         self.resources[x][y] = "fruit"
                         self.resource_amounts[x][y] = random.randint(3, 7)
 
         # 在水域生成鱼群
         for x in range(WORLD_SIZE):
             for y in range(WORLD_SIZE):
-                if self.tiles[x][y] == "water" and random.random() < 0.2:
+                if self.tiles[x][y] == "water" and random.random() < 0.1:
                     self.resources[x][y] = "fish"
                     self.resource_amounts[x][y] = random.randint(3, 8)
 
@@ -182,7 +182,7 @@ class World:
             for y in range(WORLD_SIZE):
                 if self.resources[x][y] and self.resource_amounts[x][y] == 0:
                     # 已耗尽的资源有概率刷新
-                    if random.random() < 0.1:
+                    if random.random() < 0.03:
                         if self.resources[x][y] == "tree":
                             self.resource_amounts[x][y] = random.randint(3, 7)
                         elif self.resources[x][y] == "freshwater":

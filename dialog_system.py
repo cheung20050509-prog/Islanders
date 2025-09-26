@@ -19,7 +19,7 @@ class GlobalDialogSystem:
             self.npc_conversations.pop(0)
         self.save_to_json(npc1_name, npc2_name, message, timestamp)
 
-    def add_communication_event(self, speaker_name: str, listener_name: str, message: str):
+    def add_communication_event(self, speaker_name: str, listener_name: str, message: str, volume: str):
         """添加communication类型的互动事件"""
         timestamp = time.time()
         event = {
@@ -59,5 +59,4 @@ class GlobalDialogSystem:
         data.append(conversation_data)
 
         with open("data/conversations.json", "w", encoding="utf-8") as f:
-
             json.dump(data, f, ensure_ascii=False, indent=2)

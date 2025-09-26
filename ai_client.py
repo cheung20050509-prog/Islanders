@@ -17,7 +17,7 @@ class BailianClient:
         self.elara_messages = []
         self.jax_messages = []
         self.last_call_time = 0  # 记录上次调用时间
-        self.call_cooldown = 2.0  # 调用冷却时间（秒）
+        self.call_cooldown = 10.0  # 调用冷却时间（秒）
 
     def generate_response(self, role: str, message: str) -> str:
         """调用百炼模型生成对应角色的回应"""
@@ -87,7 +87,7 @@ class BailianClient:
 
             system_prompt = """你需要根据提供的信息决定角色的下一步行动。
 请以JSON格式返回，包含以下字段：
-- action: 行动类型 (move, gather, eat, drink, rest, talk)
+- action: 行动类型 (move, gather, eat, drink, give, talk, reflect)
 - target: 目标位置(x,y)或目标对象名称，无目标则为null
 - details: 行动细节描述
 - volume: 若为talk行动，需指定volume为"normal"或"loud"，其他行动为null
