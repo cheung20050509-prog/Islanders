@@ -33,9 +33,9 @@ class World:
         self._pre_render_terrain()
 
         self.npcs = [
-            SmartNPC("凯", 5.5, 5.5, bailian, dialog_system, chronicle),
-            SmartNPC("伊拉拉", 5.5, 8.5, bailian, dialog_system, chronicle),
-            SmartNPC("贾克斯", 6.5, 6.5, bailian, dialog_system, chronicle),
+            SmartNPC("凯", 13, 13, bailian, dialog_system, chronicle),
+            SmartNPC("伊拉拉", 14, 15, bailian, dialog_system, chronicle),
+            SmartNPC("贾克斯", 15, 14, bailian, dialog_system, chronicle),
         ]
         
         # 新增：记录所有NPC的行为，用于观察
@@ -46,7 +46,7 @@ class World:
         tiles = [["water" for _ in range(WORLD_SIZE)] for _ in range(WORLD_SIZE)]
 
         center = WORLD_SIZE // 2  # 计算中心点坐标
-        radius = 15  # 岛屿半径
+        radius = 10  # 岛屿半径
 
         for x in range(WORLD_SIZE):
             for y in range(WORLD_SIZE):
