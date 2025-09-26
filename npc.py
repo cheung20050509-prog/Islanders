@@ -244,16 +244,20 @@ class SmartNPC:
 
     def give(self, target_npc: 'SmartNPC', resource_type: str, amount: int):
         """赠送资源给目标NPC"""
+        print(self.inventory,target_npc.inventory)
         if self.is_dead or target_npc.is_dead:
             return
 
         distance = math.sqrt((self.x - target_npc.x) **2 + (self.y - target_npc.y)** 2)
-        if distance > 0.5:
+        if distance > 7:
+            print("位置太远")
             self.memory.add(f"尝试给{target_npc.name}赠送{resource_type}，但不在同一位置", MemoryType.ACTION, 5)
+
             return
 
         # 新增：计算实际可赠送的数量（不超过双方限制）
         if resource_type not in self.INVENTORY_LIMITS:
+            print("资源未知")
             self.memory.add(f"无法赠送未知资源：{resource_type}", MemoryType.ACTION, 5)
             return
             
@@ -263,6 +267,7 @@ class SmartNPC:
         
         max_possible = min(amount, self_current, target_max - target_current)
         if max_possible <= 0:
+            print("库存不足")
             self.memory.add(
                 f"尝试给{target_npc.name}赠送{amount}个{resource_type}，但库存不足或对方已达上限",
                 MemoryType.ACTION, 5
@@ -271,18 +276,23 @@ class SmartNPC:
 
         # 更新双方库存（使用实际赠送量）
         self.inventory[resource_type] -= max_possible
+        print(f"{self.name}真的给{target_npc.name}赠送了{max_possible}个{resource_type}")
         target_npc.inventory[resource_type] = target_current + max_possible
 
         # 双方记录记忆（使用实际赠送量）
+        print(f"给{target_npc.name}赠送了{max_possible}个{resource_type}")
+        print("看来真给成了")
         self.memory.add(
             f"给{target_npc.name}赠送了{max_possible}个{resource_type}，剩余{self.inventory[resource_type]}个",
+
             MemoryType.COMMUNICATION, 7
         )
+        print("将要写入记忆")
         target_npc.memory.add(
             f"收到{self.name}赠送的{max_possible}个{resource_type}，现在有{target_npc.inventory[resource_type]}个",
             MemoryType.COMMUNICATION, 7
         )
-
+        print("将要写入编年史")
         # 记录到编年史（使用实际赠送量）
         self.chronicle.add_event(
             self.name, "赠送", (self.x, self.y),
@@ -291,6 +301,9 @@ class SmartNPC:
 
         self.save_state()
         target_npc.save_state()
+        print(self.inventory, target_npc.inventory)
+
+
     def interact_with_nearby_npcs(self):
         """与附近的NPC交互"""
         if self.is_dead or self.is_in_conversation:
@@ -475,6 +488,11 @@ class SmartNPC:
 如果看到资源，可以考虑采集。
 如果看到其他NPC，很大可能交流。Communication时，不要太多考虑，直接和他人说话。
 可以向附近NPC赠送资源（格式：give+目标NPC+资源类型,数量），赠送不消耗能量但需要在同一位置。
+give的格式必须如下
+{{"action": "give", "target": "凯", "details": "水,2"}}
+details的格式必须为资源类型,数量
+detail的样子必须如"水,2"
+"details": "水,2"
 """
 
             # 模拟思考延迟
@@ -534,17 +552,24 @@ class SmartNPC:
             self.drink()
 
         elif action_type == "give" and isinstance(target, str) and details:
+            print("迪克沃德")
+            print(Dict,world)
             # 解析详情中的资源类型和数量（格式示例："鱼,3"）
-            try:
-                resource_type, amount = details.split(',')
-                amount = int(amount)
-                # 查找目标NPC
-                for npc in self.nearby_npcs:
-                    if npc.name == target:
-                        self.give(npc, resource_type, amount)
-                        break
-            except (ValueError, TypeError):
-                self.memory.add(f"赠送格式错误，正确格式应为'资源类型,数量'", MemoryType.ACTION, 4)
+            print(self.name,"give","目标",target,str,"details",details)
+            print(details)
+
+            resource_type, amount = details.split(',')
+            amount = int(amount)
+            # 查找目标NPC
+            print("nearby",self.nearby_npcs)
+            for npc in self.nearby_npcs:
+
+                if npc.name == target:
+                    print("SOS")
+                    self.give(npc, resource_type, amount)
+                    break
+            '''except (ValueError, TypeError):
+                self.memory.add(f"赠送格式错误，正确格式应为'资源类型,数量'", MemoryType.ACTION, 4)'''
 
         
 

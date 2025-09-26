@@ -37,7 +37,7 @@ class World:
             SmartNPC("伊拉拉", 14, 15, bailian, dialog_system, chronicle),
             SmartNPC("贾克斯", 15, 14, bailian, dialog_system, chronicle),
         ]
-        
+
         # 新增：记录所有NPC的行为，用于观察
         self.action_log = []
 
@@ -168,9 +168,9 @@ class World:
                 self.terrain_surface.blit(tile_surf, (x * TILE_SIZE, y * TILE_SIZE))
 
     def update_time(self):
-        self.time = (self.time + 0.02) % 24
+        self.time = (self.time + 0.04) % 24
 
-        if self.time < 0.02:
+        if self.time < 0.04:
             self.day += 1
 
             # 每天有概率刷新一些资源
