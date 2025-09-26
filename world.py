@@ -168,9 +168,9 @@ class World:
                 self.terrain_surface.blit(tile_surf, (x * TILE_SIZE, y * TILE_SIZE))
 
     def update_time(self):
-        self.time = (self.time + 0.04) % 24
+        self.time = (self.time + 0.1) % 24
 
-        if self.time < 0.04:
+        if self.time < 0.1:
             self.day += 1
 
             # 每天有概率刷新一些资源
