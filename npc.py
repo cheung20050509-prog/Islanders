@@ -318,7 +318,7 @@ class SmartNPC:
         # 增加NPC互动间隔
         if self.nearby_npcs:
             available_npcs = [npc for npc in self.nearby_npcs if not npc.is_in_conversation]
-
+            print("where",available_npcs)
             if available_npcs:
                 if self.first_meeting:
                     self.first_meeting = False

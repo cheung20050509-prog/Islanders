@@ -216,8 +216,8 @@ class Game:
             await asyncio.sleep(0.1)
             self.world.update_time()
             # 假设 world 是 World 类的实例
-            print(self.world.get_state_str())
 
+        print(self.world.get_state_str())
         print("时间更新")
 
     async def process_events(self):

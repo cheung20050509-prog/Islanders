@@ -10,8 +10,8 @@ from dashscope import Application
 class BailianClient:
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self.kai_app_id = '3eae9a8c46aa49d596cc10015ff3b11b'
-        self.elara_app_id = '4a1b71350ea54ec6bedd304ac6938709'
+        self.kai_app_id = 'ece3f0724fc244b9bc2cb2bb431ed168'
+        self.elara_app_id = 'c0b3c731180148c9ac1c56dc358fd267'
         self.jax_app_id = 'fdcabb9f543e4da8a333902f3f7a4330'
         self.kai_messages = []
         self.elara_messages = []
