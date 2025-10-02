@@ -238,8 +238,10 @@ class Game:
                 self.update(),
                 self.process_events(),
                 self.update_time()
-            )
 
+            )
+            for npc in self.world.npcs:
+                npc.is_in_conversation = False
             # 控制帧率
             await asyncio.sleep(1/self.frame_rate_limit)
 
