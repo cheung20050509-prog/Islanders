@@ -84,7 +84,7 @@ class MemoryStream:
 以下是你最近的一些重要记忆：
 {json.dumps(contents, ensure_ascii=False, indent=2)}
 
-请你进行一次反思，总结这些记忆中的规律或经验，并生成一条简短的反思性总结。"""
+根据自己的记忆进行反思和总结，从对话和观察中提取信息，形成一些经验，如对其他成员的认知，对自己行为合理性的思考。reflect的内容要是写实的，不要总结大道理。"""
 
             try:
                 summary = bailian.generate_response(npc_name, prompt)
