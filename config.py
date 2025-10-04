@@ -20,11 +20,9 @@ MODEL_CALL_COOLDOWN = 10
 
 # 资源类型与采集量
 RESOURCE_TYPES = {
-    "tree": {"name": "树木", "gather": "wood", "amount": 3},
     "freshwater": {"name": "淡水", "gather": "水", "amount": 5},
     "fish": {"name": "鱼群", "gather": "鱼", "amount": 2},
-    "fruit": {"name": "果树", "gather": "果实", "amount": 4},
-    "wreckage": {"name": "残骸", "gather": "杂物", "amount": 3}
+    "fruit": {"name": "果树", "gather": "果实", "amount": 4}
 }
 
 # 颜色定义
@@ -56,4 +54,5 @@ def init_fonts():
     small_font = pygame.font.SysFont(font_names, 16)
     large_font = pygame.font.SysFont(font_names, 32)
     tiny_font = pygame.font.SysFont(font_names, 12)
+
     return game_font, small_font, large_font, tiny_font
