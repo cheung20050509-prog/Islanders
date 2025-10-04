@@ -109,7 +109,7 @@ class SmartNPC:
         for other_npc in all_npcs:
             if other_npc != self and not other_npc.is_dead:
                 distance = math.sqrt((self.x - other_npc.x) ** 2 + (self.y - other_npc.y) ** 2)
-                if distance < VOLUME_LOUD_RANGE:
+                if distance < 100:
                     self.nearby_npcs.append(other_npc)
 
     def find_nearby_resources(self, world):
@@ -303,6 +303,86 @@ class SmartNPC:
         target_npc.save_state()
         print(self.inventory, target_npc.inventory)
 
+    def rob(self, target_npc: 'SmartNPC', resource_type: str):
+        """抢夺目标NPC的资源"""
+        if self.is_dead or target_npc.is_dead:
+            return
+
+        # 检查是否在同一位置
+        distance = math.sqrt((self.x - target_npc.x) **2 + (self.y - target_npc.y)** 2)
+        if distance > 7:
+            self.memory.add(f"尝试抢夺{target_npc.name}的{resource_type}，但不在同一位置", MemoryType.ACTION, 5)
+            return
+
+        # 检查资源是否合法
+        if resource_type not in self.INVENTORY_LIMITS:
+            self.memory.add(f"无法抢夺未知资源：{resource_type}", MemoryType.ACTION, 5)
+            return
+
+        # 检查目标是否有该资源
+        if target_npc.inventory.get(resource_type, 0) <= 0:
+            self.memory.add(f"尝试抢夺{target_npc.name}的{resource_type}，但对方没有该资源", MemoryType.ACTION, 5)
+            return
+
+        # 抢夺消耗的基础能量
+        base_energy_cost = 15
+
+        # 先判断双方能量（抢夺方暂不扣除）
+        if self.energy > target_npc.energy:
+            # 抢夺成功
+            # 检查抢夺方库存是否已满
+            if self.inventory[resource_type] < self.INVENTORY_LIMITS[resource_type]:
+                # 转移资源
+                target_npc.inventory[resource_type] -= 1
+                self.inventory[resource_type] += 1
+
+                # 扣除抢夺方能量
+                self.energy = max(0, self.energy - base_energy_cost)
+
+                # 双方记录记忆
+                self.memory.add(
+                    f"成功抢夺{target_npc.name}的1个{resource_type}，消耗{base_energy_cost}能量，剩余能量{self.energy}",
+                    MemoryType.ACTION, 7
+                )
+                target_npc.memory.add(
+                    f"被{self.name}抢走1个{resource_type}，剩余{target_npc.inventory[resource_type]}个",
+                    MemoryType.ACTION, 7
+                )
+
+                # 记录到编年史
+                self.chronicle.add_event(
+                    self.name, "抢夺", (self.x, self.y),
+                    f"从{target_npc.name}处抢走1个{resource_type}"
+                )
+            else:
+                self.memory.add(
+                    f"成功制服{target_npc.name}，但自己的{resource_type}库存已满，无法抢夺",
+                    MemoryType.ACTION, 7
+                )
+                # 仍需扣除能量
+                self.energy = max(0, self.energy - base_energy_cost)
+        else:
+            # 抢夺失败，扣除双倍能量
+            self.energy = max(0, self.energy - base_energy_cost * 2)
+            self.memory.add(
+                f"抢夺{target_npc.name}的{resource_type}失败，被反击，消耗{base_energy_cost * 2}能量，剩余能量{self.energy}",
+                MemoryType.ACTION, 7
+            )
+            target_npc.memory.add(
+                f"成功阻止{self.name}抢夺我的{resource_type}，对方消耗了大量能量",
+                MemoryType.ACTION, 7
+            )
+
+            # 记录到编年史
+            self.chronicle.add_event(
+                self.name, "抢夺失败", (self.x, self.y),
+                f"尝试抢夺{target_npc.name}的{resource_type}但失败"
+            )
+
+        # 保存双方状态
+        self.save_state()
+        target_npc.save_state()
+
 
     def interact_with_nearby_npcs(self):
         """与附近的NPC交互"""
@@ -492,12 +572,10 @@ class SmartNPC:
 如果能量低，考虑吃东西或喝水。
 如果看到资源，可以考虑采集。
 如果看到其他NPC，很大可能交流。Communication时，不要太多考虑，直接和他人说话。
-可以向附近NPC赠送资源（格式：give+目标NPC+资源类型,数量），赠送不消耗能量但需要在同一位置。
-give的格式必须如下
-{{"action": "give", "target": "凯", "details": "水,2"}}
-details的格式必须为资源类型,数量
-detail的样子必须如"水,2"
-"details": "水,2"
+可以向附近NPC赠送资源（格式：give+目标NPC+资源类型,数量），赠送不消耗能量但需要在同一位置,give的格式必须如下{{"action": "give", "target": "凯", "details": "水,2"}},
+details的格式必须为资源类型,数量,detail的样子必须如"水,2"，"details": "水,2";
+可以抢夺附近NPC的资源（格式：rob+目标NPC+资源类型），抢夺会消耗能量，成功与否取决于双方能量对比，
+rob的格式必须如下：{{"action": "rob", "target": "凯", "details": "水"}}，details的格式必须为资源类型，detail的样子必须如"水"，"details": "水"。
 """
 
             # 模拟思考延迟
@@ -575,6 +653,15 @@ detail的样子必须如"水,2"
                     break
             '''except (ValueError, TypeError):
                 self.memory.add(f"赠送格式错误，正确格式应为'资源类型,数量'", MemoryType.ACTION, 4)'''
+        
+        elif action_type == "rob" and isinstance(target, str) and details:
+            # 解析详情中的资源类型（格式示例："鱼"）
+            resource_type = details.strip()
+            # 查找目标NPC
+            for npc in self.nearby_npcs:
+                if npc.name == target:
+                    self.rob(npc, resource_type)
+                    break
 
         
 
