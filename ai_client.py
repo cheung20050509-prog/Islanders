@@ -10,9 +10,9 @@ from dashscope import Application
 class BailianClient:
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self.kai_app_id = 'ece3f0724fc244b9bc2cb2bb431ed168'
-        self.elara_app_id = 'c0b3c731180148c9ac1c56dc358fd267'
-        self.jax_app_id = 'fdcabb9f543e4da8a333902f3f7a4330'
+        self.kai_app_id = '61428035a8ce434091be8fa69d46d6c5'
+        self.elara_app_id = '4a1b71350ea54ec6bedd304ac6938709'
+        self.jax_app_id = 'e4aeb29ccfcc4597941d66c1de14ba3b'
         self.kai_messages = []
         self.elara_messages = []
         self.jax_messages = []
@@ -87,7 +87,7 @@ class BailianClient:
 
             system_prompt = """你需要根据提供的信息决定角色的下一步行动。
 请以JSON格式返回，包含以下字段：
-- action: 行动类型 (move, gather, eat, drink, give, talk, reflect)
+- action: 行动类型 (move, gather, eat, drink, give, talk, reflect, rob)
 - target: 目标位置(x,y)或目标对象名称，无目标则为null
 - details: 行动细节描述
 - volume: 若为talk行动，需指定volume为"normal"或"loud"，其他行动为null
